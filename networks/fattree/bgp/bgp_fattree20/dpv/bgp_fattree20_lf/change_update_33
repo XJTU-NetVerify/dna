@@ -1,0 +1,4 @@
+- fwd aggregation-421 168185856 31 Serial15 31 0.0.0.0
+- fwd aggregation-421 168185856 32 Serial15 32 0.0.0.0
+- fwd aggregation-421 1174516736 24 Serial15 24 10.6.80.1
++ fwd aggregation-421 1174516736 24 Serial9 24 10.6.74.1

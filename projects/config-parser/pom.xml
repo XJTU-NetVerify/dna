@@ -1,0 +1,53 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>org.ants</groupId>
+    <artifactId>dna-project</artifactId>
+    <version>0.1.0</version>
+  </parent>
+
+  <artifactId>config-parser</artifactId>
+
+  <packaging>jar</packaging>
+
+  <dependencies>
+    <dependency>
+      <groupId>org.batfish</groupId>
+      <artifactId>batfish-common-protocol</artifactId>
+      <version>0.36.0</version>
+    </dependency>
+
+    <dependency>
+      <groupId>org.batfish</groupId>
+      <artifactId>batfish</artifactId>
+      <version>0.36.0</version>
+    </dependency>
+
+    <dependency>
+      <groupId>org.apache.commons</groupId>
+      <artifactId>commons-collections4</artifactId>
+      <version>4.4</version>
+    </dependency>
+
+    <dependency>
+      <groupId>com.google.guava</groupId>
+      <artifactId>guava</artifactId>
+      <version>28.1-jre</version>
+    </dependency>
+
+    <dependency>
+      <groupId>com.alibaba</groupId>
+      <artifactId>fastjson</artifactId>
+      <version>1.2.70</version>
+    </dependency>
+
+    <dependency>
+      <groupId>org.ddlog</groupId>
+      <artifactId>ddlogapi</artifactId>
+      <version>1.2.3</version>
+    </dependency>
+  </dependencies>
+</project>

@@ -1,0 +1,4 @@
++ fwd aggregation-147 1174444544 24 Serial10 24 10.1.14.1
+- fwd aggregation-147 1174444544 24 Serial14 24 10.1.18.1
+- fwd edge-154 167842304 31 Serial7 31 0.0.0.0
+- fwd edge-154 167842305 32 Serial7 32 0.0.0.0

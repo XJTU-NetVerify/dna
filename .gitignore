@@ -1,0 +1,21 @@
+# IDEA
+.idea/
+.setting/
+*.iml
+.classpath
+.project
+
+# Compiled results
+target/
+routing_ddlog/
+
+# Outputs
+*.dat
+results/
+
+# Native dep.
+.so
+.DS_Store
+
+# Eclipse
+.settings/

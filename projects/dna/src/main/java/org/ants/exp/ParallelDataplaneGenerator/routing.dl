@@ -1,0 +1,845 @@
+import regex
+/**
+ *  Types that could be possibly modified in the future.
+ */
+typedef Origin = u64 // 1.IGP(injected by network command), 2.EGP(obsolete), 3.Incomplete
+typedef Id = u64
+typedef route_map_t = RouteMap {permit: bool, match_condition: Vec<match_attr_t>, set_action: Vec<set_attr_t>}
+typedef ip_t =  Ip {b3: bit<8>, b2: bit<8>, b1: bit<8>, b0: bit<8>}
+typedef prefix_t = Prefix {addr: ip_t, mask: ip_t}
+typedef prefix_list_t = CommonPrefix {prefix: prefix_t} | ExtendPrefix{prefix: prefix_t, ge: u32, le: u32}
+typedef community_t = Community {as_ : istring, tag : istring}
+typedef vnode_t = VNode {device: istring, vrf: istring}
+
+/**
+ * Variant types.
+ */
+typedef match_attr_t =
+    MatchNextHopIp {next_hop_ip: ip_t} |
+    MatchPrefixList{prefix_list: Vec<prefix_list_t>} |
+    MatchAsPath    {as_: u64} |
+    MatchCommunity {community: community_t}
+
+typedef set_attr_t =
+    SetNextHopIp {next_hop_ip: ip_t} |
+    SetLocalPref {local_pref: u64} |
+    SetMed       {med: u64} |
+    SetCommunity {additive: bool, community: community_t}
+
+/**
+ * The input relations
+ */
+input relation Node(node: vnode_t, as_: u64, id: u64)
+input relation Interface(node: vnode_t, intf: istring, prefix: prefix_t)
+input relation L3Link(node1: istring, int1: istring, node2: istring, int2: istring)
+input relation StaticRoute(node: vnode_t, prefix: prefix_t, next_hop_ip: ip_t, adminCost: u64)
+
+input relation OspfIntfSetting(node: vnode_t, intf: istring, cost: u64, area: u64, passive: bool, process: u64)
+input relation OspfRedis(node: vnode_t, protocol: istring, process: u64)
+input relation OspfMultipath(node: vnode_t, k: u64, process: u64)
+// no_summary / default_originate / no_redis / metric
+// stub: no_summary = false; default_originate = true; no_redis = true;
+// T-stub: no_summary = true; default_originate = true; no_redis = true;
+// nssa: no_summary = false;
+// T-nssa: no_summary = true;
+input relation OspfStubArea(node: vnode_t, process: u64, area: u64, no_summary:bool, default_originate: bool, no_redis: bool, metric: u64)
+
+input relation BgpNeighbor(node1: vnode_t, ip1: ip_t, node2: vnode_t, ip2: ip_t)
+input relation BgpNetwork(node: vnode_t, prefix: prefix_t)
+input relation IBgpNeighbor(node1: vnode_t, ip1: ip_t, node2: vnode_t, ip2: ip_t)
+input relation BgpReflectClient(node1: vnode_t, ip1: ip_t, node2: vnode_t, ip2: ip_t)
+input relation RouteMapIn(node: vnode_t, from_node: vnode_t, policy: Intern<Vec<route_map_t>>)
+input relation RouteMapOut(node: vnode_t, to_node: vnode_t, policy: Intern<Vec<route_map_t>>)
+input relation BgpRedis(node: vnode_t, protocol: istring)
+input relation BgpAggregation(node: vnode_t, prefix: prefix_t)
+input relation BgpMultipath(node: vnode_t, k: u64, relax: bool)
+
+input relation OspfPrefixSpreadEnable(prefix: prefix_t)
+input relation BgpPrefixSpreadEnable(prefix: prefix_t)
+/**
+ * The output relations
+ */
+output relation Fib(node: string, prefix: string, intf: string, next_hop_ip: string)
+
+/**
+ * Intermediate relations
+ */
+relation InterfaceIp(node: vnode_t, intf: istring, ip: ip_t)
+relation ConnectedRoute(node: vnode_t, net: prefix_t, intf: istring)
+relation L3Neighbor(node1: vnode_t, int1: istring, ip1: ip_t, node2: vnode_t, int2: istring, ip2: ip_t)
+
+// Global RIB
+relation GlobalRib(node: vnode_t, prefix: prefix_t, intf: istring, next_hop_ip: ip_t, protocol: istring, admin: u64)
+relation MinAdmin(node: vnode_t, prefix: prefix_t, min_admin: u64)
+
+// Static
+relation StaticMatchedRoute(node: vnode_t, prefix: prefix_t, pfx_to_nhip: prefix_t, intf: istring, conn_nhip: ip_t, admin: u64)
+relation MaxLengthMatchedRoute(node: vnode_t, prefix: prefix_t, length: u32)
+
+// OSPF
+relation OspfAreaABR(node: vnode_t, process: u64, area: u64)
+relation AreaABRToStub(node: vnode_t, next_hop: vnode_t, area: u64, no_summary: bool, default_originate: bool, no_redis: bool, metric: u64)
+relation OspfNeighbor(node1: vnode_t, ip1: ip_t, process1: u64, node2: vnode_t, ip2: ip_t, process2: u64)
+relation OspfRib(node: vnode_t, prefix: prefix_t, next_hop: vnode_t, next_hop_ip: ip_t, cost: u64)
+relation BestOspfRoute(node: vnode_t, prefix: prefix_t, next_hop: vnode_t, next_hop_ip: ip_t, cost: u64, origin_type: istring, process: u64, originator: vnode_t)
+relation OspfRoute(node: vnode_t, prefix: prefix_t, next_hop: vnode_t, next_hop_ip: ip_t, cost: u64, origin_type: istring, process: u64, originator: vnode_t)
+relation MinOspfCost(origin_type: istring, node: vnode_t, prefix: prefix_t, min_cost: u64)
+relation OspfMultipleBestRoutes(process: u64, node: vnode_t, prefix: prefix_t, routes: Vec<OspfRoute>)
+
+// BGP routes
+relation BgpRib(node: vnode_t, prefix: prefix_t, next_hop_ip: ip_t, as_path: Intern<Vec<u64>>, local_pref: u64, med: u64, origin: Origin, community: Intern<Vec<community_t>>, bgp_type: istring, originate_id: u64, cluster_list: Intern<Vec<u64>>)
+relation BGPBestRoute(node: vnode_t, prefix: prefix_t, next_hop_ip: ip_t, as_path: Intern<Vec<u64>>, local_pref: u64, med: u64, origin: Origin, community: Intern<Vec<community_t>>, bgp_type: istring, originate_id: u64, cluster_list: Intern<Vec<u64>>)
+relation BgpMultipleBestRoutes(node: vnode_t, prefix: prefix_t, routes: Vec<MatchedRibIn>)
+
+// BGP route anouncement propogration
+relation AdjRibOut(node: vnode_t, to_node: vnode_t, prefix: prefix_t, next_hop_ip: ip_t, as_path: Intern<Vec<u64>>, local_pref: u64, med: u64, origin: Origin, community: Intern<Vec<community_t>>, bgp_type: istring, originate_id: u64, cluster_list: Intern<Vec<u64>>)
+relation AdjRibIn(node: vnode_t, from_node: vnode_t, prefix: prefix_t, next_hop_ip: ip_t, as_path: Intern<Vec<u64>>, local_pref: u64, med: u64, origin: Origin, community: Intern<Vec<community_t>>, bgp_type: istring, originate_id: u64, cluster_list: Intern<Vec<u64>>)
+
+// BGP route map
+relation MatchedRibIn(node: vnode_t, prefix: prefix_t, next_hop_ip: ip_t, as_path: Intern<Vec<u64>>, local_pref: u64, med: u64, origin: Origin, community: Intern<Vec<community_t>>, bgp_type: istring, originate_id: u64, cluster_list: Intern<Vec<u64>>)
+relation NeedMatchRibOut(node: vnode_t, to_node: vnode_t, prefix: prefix_t, next_hop_ip: ip_t, as_path: Intern<Vec<u64>>, local_pref: u64, med: u64, origin: Origin, community: Intern<Vec<community_t>>, bgp_type: istring, originate_id: u64, cluster_list: Intern<Vec<u64>>)
+
+// BGP route aggregation
+relation BgpAggregateRib(node: vnode_t, prefix: prefix_t, next_hop_ip: ip_t, as_path: Intern<Vec<u64>>, local_pref: u64, med: u64, origin: Origin, community: Intern<Vec<community_t>>, bgp_type: istring, originate_id: u64, cluster_list: Intern<Vec<u64>>)
+relation AggregateRoute(node: vnode_t, prefix: prefix_t, agg_prefix: prefix_t)
+
+/**
+ * Basic configuration rules
+ */
+InterfaceIp(node, int, ip) :-
+    Interface(node, int, prefix),
+    var ip = prefix.addr.
+
+ConnectedRoute(node, net, int) :-
+    Interface(node, int, prefix),
+    var net = Prefix{
+        .addr = Ip{prefix.addr.b3 & prefix.mask.b3,
+                   prefix.addr.b2 & prefix.mask.b2,
+                   prefix.addr.b1 & prefix.mask.b1,
+                   prefix.addr.b0 & prefix.mask.b0},
+        .mask = prefix.mask
+    }.
+
+// L3Neighbor(node1, int1, ip1, node2, int2, ip2) :-
+//     InterfaceIp(node1, int1, ip1),
+//     L3Link(node1.device, int1, node2_device, int2),
+//     InterfaceIp(node2, int2, ip2),
+//     node2.device == node2_device.
+
+L3Neighbor(node1, int1, ip1, node2, int2, ip2) :-
+    ConnectedRoute(node1, net, int1),
+    ConnectedRoute(node2, net, int2),
+    InterfaceIp(node1, int1, ip1),
+    InterfaceIp(node2, int2, ip2),
+    node1 != node2.
+
+OspfNeighbor(node1, ip1, process1, node2, ip2, process2) :-
+    L3Neighbor(node1, int1, ip1, node2, int2, ip2),
+    OspfIntfSetting(node1, int1, _, area, false, process1),
+    OspfIntfSetting(node2, int2, _, area, false, process2).
+
+/**
+ * The FIB process.
+ */
+MinAdmin(node, prefix, min_admin) :-
+    GlobalRib(node, prefix, _, _, _, admin),
+    var min_admin = Aggregate((node, prefix), group_min(admin)).
+
+Fib(ival(node.device), prefix_s, ival(intf), next_hop_ip_s) :-
+    GlobalRib(node, prefix, intf, next_hop_ip, _, admin),
+    MinAdmin(node, prefix, admin),
+    var next_hop_ip_s = "${next_hop_ip.b3}.${next_hop_ip.b2}.${next_hop_ip.b1}.${next_hop_ip.b0}",
+    var prefix_s = "${ip_2string(prefix.addr)}/${count_bit(prefix.mask)}",
+    not AggregateRoute(node, _, prefix).
+
+Fib(ival(node.device), prefix_s, ival(intf), next_hop_ip_s) :-
+    InterfaceIp(node, intf, ip),
+    var next_hop_ip_s = "0.0.0.0",
+    var prefix_s = "${ip_2string(ip)}/32".
+
+Fib(ival(node.device), prefix_s, ival(intf), next_hop_ip_s) :-
+    AggregateRoute(node, prefix, agg_prefix),
+    var prefix_s = "${ip_2string(agg_prefix.addr)}/${count_bit(agg_prefix.mask)}",
+    var intf = i"null",
+    var next_hop_ip_s = "0.0.0.0".
+
+/**
+ * GlobalRib process
+ */
+
+/**
+ * Admin distance value table:
+ *   Connected  : 0
+ *   Static     : 1
+ *   eBGP       : 20
+ *   OSPF       : 110
+ *   iBGP       : 200
+ */
+function protocolAdmin(proto: istring): u64 {
+    if (proto == i"connected") {
+        0
+    } else if (proto == i"static") {
+        1
+    } else if (proto == i"ebgp") {
+        20
+    } else if (proto == i"ospf") {
+        110
+    } else {
+        // ibgp
+        200
+    }
+}
+
+GlobalRib(node, prefix, intf, Ip{8'd0, 8'd0, 8'd0, 8'd0}, i"connected", protocolAdmin(i"connected")) :-
+    ConnectedRoute(node, prefix, intf).
+
+// Ensure that the next hop IP is in the reachable network segment
+StaticMatchedRoute(node, prefix, pfx_to_nhip, intf, conn_nhip, admin):-
+    StaticRoute(node, prefix, next_hop_ip, _),
+    GlobalRib(node, pfx_to_nhip, intf, conn_nhip, protocol, admin),
+    protocol != i"connected",
+    next_hop_ip != Ip{8'd0, 8'd0, 8'd0, 8'd0},
+    in_subnet(pfx_to_nhip.addr, next_hop_ip, pfx_to_nhip.mask).
+
+StaticMatchedRoute(node, prefix, pfx_to_nhip, intf,next_hop_ip, admin):-
+    StaticRoute(node, prefix, next_hop_ip, admin),
+    GlobalRib(node, pfx_to_nhip, intf, _, protocol, _),
+    protocol == i"connected",
+    next_hop_ip != Ip{8'd0, 8'd0, 8'd0, 8'd0},
+    in_subnet(pfx_to_nhip.addr, next_hop_ip, pfx_to_nhip.mask).
+
+GlobalRib(best_match.node, best_match.prefix, best_match.intf, best_match.conn_nhip, i"static", best_match.admin) :-
+    StaticMatchedRoute[route],
+    var node = route.node,
+    var prefix = route.prefix,
+    var best_match = Aggregate((node, prefix), best_static_match(route)).
+
+function best_static_match(g: Group<'K, StaticMatchedRoute>): StaticMatchedRoute
+{
+    var best_match = group_first(g);
+    for ((route, w) in g) {
+        // 1. longest prefix length
+        var len1 = count_bit(route.pfx_to_nhip.mask);
+        var len2 = count_bit(best_match.pfx_to_nhip.mask);
+        if (len1 > len2) {
+            best_match = route
+        } else if (len1 == len2) {
+            // 2. minimal admin
+            if (route.admin < best_match.admin) {
+                best_match = route
+            }
+        }
+    };
+    best_match
+}
+
+// always add staic route into global rib first
+GlobalRib(node, prefix, intf, next_hop_ip, i"static", adminCost) :-
+    StaticRoute(node, prefix, next_hop_ip, adminCost),
+    next_hop_ip == Ip{8'd0, 8'd0, 8'd0, 8'd0},
+    var intf = i"null".
+
+GlobalRib(node, prefix, intf, next_hop_ip, i"ospf", protocolAdmin(i"ospf")) :-
+    OspfRib(node, prefix, _, next_hop_ip, _),
+    L3Neighbor(node, intf, _, _, _, next_hop_ip).
+
+GlobalRib(node, prefix, intf, next_hop_ip, i"ebgp", protocolAdmin(i"ebgp")) :-
+    BgpRib(node, prefix, next_hop_ip, _, _, _, _, _, i"ebgp", _, _),
+    L3Neighbor(node, intf, _, _, _, next_hop_ip).
+
+GlobalRib(node, prefix, intf, next_hop_ip, i"ibgp", protocolAdmin(i"ibgp")) :-
+    BgpRib(node, prefix, ibgp_next_hop_ip, _, _, _, _, _, i"ibgp", _, _),
+    OspfRib(node, Prefix{ibgp_next_hop_ip, Ip{255, 255, 255, 255}}, _, next_hop_ip, _),
+    L3Neighbor(node, intf, _, _, _, next_hop_ip).
+
+/**
+ * OSPF process.
+ */
+ // identify all ABR routers
+OspfAreaABR(node, process, area1):-
+    OspfIntfSetting(node, _, _, area1, _, process),
+    OspfIntfSetting(node, _, _, area2, _, process),
+    area1 != area2.
+
+AreaABRToStub(node,next_node, area, no_summary, default_originate, no_redis, metric):-
+    OspfNeighbor(node, _, process1, next_node, _, process2),
+    OspfAreaABR(node, process1, area),
+    OspfStubArea(next_node, process2, area, _, _, _, _),
+    OspfStubArea(node, process1, area, no_summary, default_originate, no_redis, metric).
+
+OspfRib(route.node, route.prefix, route.next_hop, route.next_hop_ip, route.cost) :-
+    OspfRoute[route],
+    BestOspfRoute(route.node, route.prefix, _, _, route.cost, _, route.process, _),
+    not OspfMultipath(route.node, _, _).
+
+OspfRib(node, prefix, route.next_hop, route.next_hop_ip, route.cost):-
+    OspfMultipath(node, _, process),
+    OspfMultipleBestRoutes(process, node, prefix, routes),
+    var route = FlatMap(routes).
+
+OspfMultipleBestRoutes(process, node, prefix, routes):-
+    OspfRoute[route],
+    BestOspfRoute(route.node, route.prefix, _, _, route.cost, _, route.process, _),
+    OspfMultipath(route.node, k, route.process),
+    var node = route.node,
+    var prefix = route.prefix,
+    var process = route.process,
+    var routes = Aggregate((process, node, prefix), get_multipath((route, k))).
+
+// init ospf by connected route
+OspfRoute(node, prefix, next_hop, next_hop_ip, cost, origin_type, process1, next_hop) :-
+    ConnectedRoute(node, prefix, node_int),
+    OspfIntfSetting(node, node_int, node_int_cost, _, _, process1),
+    var next_hop = VNode{i"unset", i"unset"},
+    var next_hop_ip = Ip{8'd0, 8'd0, 8'd0, 8'd0},
+    var cost = node_int_cost,
+    var origin_type = i"O",
+    OspfPrefixSpreadEnable(prefix).
+
+// init ospfE, not include stub areas
+OspfRoute(node, prefix, next_hop, next_hop_ip, cost, origin_type, process, node) :-
+    OspfRedis(node, protocol, process),
+    protocol != i"ospf",
+    GlobalRib(node, prefix, _,  next_hop_ip, protocol, _),
+    prefix != Prefix{Ip{0,0,0,0}, Ip{0,0,0,0}},
+    not OspfStubArea(node, process, _, _, _, true, _),
+    var next_hop = VNode{i"unset", i"unset"},
+    var cost = 0,
+    var origin_type = i"E2".
+
+// propogate in regual areas
+OspfRoute(node, prefix, next_hop, next_hop_ip, cost, origin_type, process1, originator) :-
+    OspfNeighbor(node, ip, process1, next_hop, next_hop_ip, process2),
+    InterfaceIp(node, node_int, ip),
+    OspfIntfSetting(node, node_int, node_int_cost, area, _, process1),
+    BestOspfRoute(next_hop, prefix, hop2, _, sub_cost, origin_type, process2, originator),
+    node.device != originator.device,
+    not AreaABRToStub(next_hop, node, area, _, _, _, _),
+    var cost = sub_cost + node_int_cost.
+
+// propogate in stub/nssa areas
+// default route
+// OspfRoute(node, prefix, next_hop, next_hop_ip, cost, origin_type, process1, next_hop) :-
+//     OspfNeighbor(node, ip, process1, next_hop, next_hop_ip, process2),
+//     InterfaceIp(node, node_int, ip),
+//     OspfIntfSetting(node, node_int, node_int_cost, area, _, process1),
+//     AreaABRToStub(next_hop, node, area, _, true, _, metric),
+//     var prefix = Prefix{Ip{8'd0, 8'd0, 8'd0, 8'd0}, Ip{8'd0, 8'd0, 8'd0, 8'd0}},
+//     var cost = metric,
+//     var origin_type = i"O".
+
+// stub
+// OspfRoute(node, prefix, next_hop, next_hop_ip, cost, origin_type, process1, originator) :-
+//     OspfNeighbor(node, ip, process1, next_hop, next_hop_ip, process2),
+//     InterfaceIp(node, node_int, ip),
+//     OspfIntfSetting(node, node_int, node_int_cost, area, _, process1),
+//     BestOspfRoute(next_hop, prefix, hop2, _, sub_cost, origin_type, process2, originator),
+//     node.device != originator.device,
+//     AreaABRToStub(next_hop, node, area, false, _, _, _),
+//     origin_type != i"E2",
+//     var cost = sub_cost + node_int_cost.
+
+BestOspfRoute(node, prefix, best_route.next_hop, best_route.next_hop_ip, best_route.cost, best_route.origin_type, process, best_route.originator) :-
+    OspfRoute[route],
+    var node = route.node,
+    var prefix = route.prefix,
+    var process = route.process,
+    var best_route = Aggregate((process, node, prefix), best_ospf_route(route)).
+
+// priority: Intra-Area(O) > Inter-Area(O IA) > External Type 1(E1) > External Type 2(E2)
+function ospfTypePriority(origin_type: istring): u16 {
+    if (origin_type == i"O") {
+        16'd6
+    } else if (origin_type == i"O IA") {
+        16'd5
+    }else if(origin_type == i"E1") {
+        16'd4
+    }else if(origin_type == i"E2") {
+        16'd3
+    }else{
+        16'd0
+    }
+}
+
+// best ospf route selection
+function best_ospf_route(g: Group<'K, OspfRoute>): OspfRoute
+{
+    var best_route = group_first(g);
+    for ((route, w) in g) {
+        // 1. max type priority
+        var priority1 = ospfTypePriority(best_route.origin_type);
+        var priority2 = ospfTypePriority(route.origin_type);
+        if (priority2 > priority1) {
+            best_route = route
+        } else if (priority1 == priority2) {
+            // 2. min path cost
+            if (route.cost < best_route.cost) {
+                best_route = route
+            }
+        }
+    };
+    best_route
+}
+
+/**
+ * BGP process.
+ *
+ * Route-map inbound.
+ * Accept rib from neighbor, check loop and apply policies.
+ * Note that some properties should not and can not be changed such as med during inbound process.
+ */
+// from eBGP, check loop
+AdjRibIn(node, from_node, prefix, next_hop_ip, as_path, local_pref, med, origin, community, bgp_type, originate_id, cluster_list) :-
+    AdjRibOut(from_node, node, prefix, next_hop_ip, as_path, local_pref, med, origin, community, bgp_type, originate_id, cluster_list),
+    not ConnectedRoute(node, prefix, _),
+    bgp_type == i"ebgp" or bgp_type == i"other",
+    Node(node, as_, _),
+    not vec_contains(ival(as_path), as_).
+
+// from iBGP, check cluster_list and originate_id
+AdjRibIn(node, from_node, prefix, next_hop_ip, as_path, local_pref, med, origin, community, bgp_type, originate_id, cluster_list) :-
+    AdjRibOut(from_node, node, prefix, next_hop_ip, as_path, local_pref, med, origin, community, bgp_type, originate_id, cluster_list),
+    not ConnectedRoute(node, prefix, _),
+    bgp_type == i"ibgp" or bgp_type == i"other",
+    Node(node, _, id),
+    not vec_contains(ival(cluster_list), id),
+    id != originate_id.
+
+MatchedRibIn(node, prefix, next_hop_ip_n, as_path, local_pref_n, med, origin, community_n, bgp_type, originate_id, cluster_list) :-
+    AdjRibIn(node, from_node, prefix, next_hop_ip, as_path, local_pref, med, origin, community, bgp_type, originate_id, cluster_list),
+    RouteMapIn(node, from_node, policy),
+    var res = match_and_set(policy, prefix, next_hop_ip, as_path, local_pref, med, community),
+    (var is_matched, var is_permitted, var local_pref_n, _, var community_n, var next_hop_ip_n) = res,
+    is_matched,
+    is_permitted.
+
+// If there is not a route-map-in
+MatchedRibIn(node, prefix, next_hop_ip, as_path, local_pref, med, origin, community, bgp_type, originate_id, cluster_list) :-
+    AdjRibIn(node, from_node, prefix, next_hop_ip, as_path, local_pref, med, origin, community, bgp_type, originate_id, cluster_list),
+    not RouteMapIn(node, from_node, _).
+
+/**
+ * BGP decision process.
+ * select best route from AdjRibIn based on the following steps:
+ * 1. highest local pref
+ * 2. shortest AS path
+ * 3. min origin
+ * 4. min med
+ * 5. prefer ebgp over ibgp
+ * 6. final tie break: smallest next-hop router id
+ */
+
+function bgpTypeCost(bgp_typ: istring): u16 {
+    if (bgp_typ == i"ebgp") {
+        1
+    } else if (bgp_typ == i"ibgp") {
+        2
+    } else {
+        3
+    }
+}
+
+BGPBestRoute(best_route.node, best_route.prefix, best_route.next_hop_ip, best_route.as_path, best_route.local_pref, best_route.med, best_route.origin, best_route.community, best_route.bgp_type, best_route.originate_id, best_route.cluster_list) :-
+    MatchedRibIn[route],
+    InterfaceIp(next_hop, _, route.next_hop_ip),
+    Node(next_hop, _, next_hop_id),
+    var node = route.node,
+    var prefix = route.prefix,
+    var best_route = Aggregate((node, prefix), best_route((route, next_hop_id))).
+    // Inspect record_state(ddlog_timestamp, ddlog_weight, best_route).
+
+function best_route(g: Group<'K, (MatchedRibIn, u64)>): MatchedRibIn
+{
+    var best_route = group_first(g);
+    for ((route, w) in g) {
+        // 1. highest local pref
+        if (route.0.local_pref > best_route.0.local_pref) {
+            best_route = route
+        } else if (route.0.local_pref == best_route.0.local_pref) {
+            // 2. shortest AS path
+            if (vec_len(ival(route.0.as_path)) < vec_len(ival(best_route.0.as_path))) {
+                best_route = route
+            } else if (vec_len(ival(route.0.as_path)) == vec_len(ival(best_route.0.as_path))) {
+                // 3. min origin
+                if (route.0.origin < best_route.0.origin) {
+                    best_route = route
+                } else if (route.0.origin == best_route.0.origin) {
+                    // 4. min med
+                    if (route.0.med < best_route.0.med) {
+                        best_route = route
+                    } else if (route.0.med == best_route.0.med) {
+                        // 5. prefer ebgp over ibgp
+                        if (bgpTypeCost(route.0.bgp_type) < bgpTypeCost(best_route.0.bgp_type)) {
+                            best_route = route
+                        } else if (bgpTypeCost(route.0.bgp_type) == bgpTypeCost(best_route.0.bgp_type)) {
+                            // 6. final tie break: smallest next-hop router id
+                            if (route.1 < best_route.1) {
+                                best_route = route
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    };
+    best_route.0
+}
+
+// if switch 'bgp bestpath as-path multipath-relax', the process will accept multiple paths with different AS_PATH but equal length
+BgpMultipleBestRoutes(node, prefix, routes) :-
+    MatchedRibIn[route],
+    BgpMultipath(route.node, k, relax),
+    relax == true,
+    BGPBestRoute(route.node, route.prefix, _, min_as_path, route.local_pref, route.med, route.origin, _, route.bgp_type, _, _),
+    vec_len(ival(route.as_path)) == vec_len(ival(min_as_path)),
+    var node = route.node,
+    var prefix = route.prefix,
+    var routes = Aggregate((node, prefix), get_multipath((route, k))).
+
+BgpMultipleBestRoutes(node, prefix, routes) :-
+    MatchedRibIn[route],
+    BgpMultipath(route.node, k, relax),
+    relax == false,
+    BGPBestRoute(route.node, route.prefix, _, route.as_path, route.local_pref, route.med, route.origin, _, route.bgp_type, _, _),
+    var node = route.node,
+    var prefix = route.prefix,
+    var routes = Aggregate((node, prefix), get_multipath((route, k))).
+
+function get_multipath(g: Group<'K, ('V, u64)>): Vec<'V>
+{
+    var routes: Vec<'V> = vec_empty();
+    var k = group_first(g).1;
+    for ((route, w) in g) {
+        if (k <= 0) break;
+        vec_push(routes, route.0);
+        k = k - 1
+    };
+    routes
+}
+
+BgpRib(node, prefix, route.next_hop_ip, route.as_path, route.local_pref, route.med, route.origin, route.community, route.bgp_type, route.originate_id, route.cluster_list) :-
+    BgpMultipath(node, _, _),
+    BgpMultipleBestRoutes(node, prefix, routes),
+    not BgpAggregation(node, prefix),
+    var route = FlatMap(routes).
+
+BgpRib(node, prefix, next_hop_ip, as_path, local_pref, med, origin, community, bgp_type, originate_id, cluster_list) :-
+    BGPBestRoute(node, prefix, next_hop_ip, as_path, local_pref, med, origin, community, bgp_type, originate_id, cluster_list),
+    not BgpAggregation(node, prefix),
+    not BgpMultipath(node, _, _).
+
+// Route redistribution
+BgpRib(node, prefix, next_hop_ip, as_path, local_pref, med, origin, community, bgp_type, originate_id, cluster_list) :-
+    BgpPrefixSpreadEnable(prefix),
+    BgpRedis(node, protocol),
+    protocol == i"ospf",
+    OspfRib(node, prefix, _, next_hop_ip, _),
+    var as_path = intern(vec_empty(): Vec<u64>),
+    var local_pref = 64'd100,
+    var med = 64'd0,
+    var origin = 64'd3,
+    var community= intern(vec_empty(): Vec<community_t>),
+    var bgp_type = i"other",
+    var originate_id = 64'd0,
+    var cluster_list = intern(vec_empty(): Vec<u64>).
+
+BgpRib(node, prefix, next_hop_ip, as_path, local_pref, med, origin, community, bgp_type, originate_id, cluster_list) :-
+    BgpPrefixSpreadEnable(prefix),
+    BgpRedis(node, protocol),
+    protocol == i"static",
+    StaticRoute(node, prefix, next_hop_ip, _),
+    var as_path = intern(vec_empty(): Vec<u64>),
+    var local_pref = 64'd100,
+    var med = 64'd0,
+    var origin = 64'd3,
+    var community = intern(vec_empty(): Vec<community_t>),
+    var bgp_type = i"other",
+    var originate_id = 64'd0,
+    var cluster_list = intern(vec_empty(): Vec<u64>).
+
+BgpRib(node, prefix, next_hop_ip, as_path, local_pref, med, origin, community, bgp_type, originate_id, cluster_list) :-
+    BgpPrefixSpreadEnable(prefix),
+    BgpRedis(node, protocol),
+    protocol == i"connected",
+    ConnectedRoute(node, prefix, _),
+    var next_hop_ip = Ip{8'd0, 8'd0, 8'd0, 8'd0},
+    var as_path = intern(vec_empty(): Vec<u64>),
+    var local_pref = 64'd100,
+    var med = 64'd0,
+    var origin = 64'd3,
+    var community = intern(vec_empty(): Vec<community_t>),
+    var bgp_type = i"other",
+    var originate_id = 64'd0,
+    var cluster_list = intern(vec_empty(): Vec<u64>).
+
+/**
+ * Route aggregation process.
+ */
+AggregateRoute(node, prefix, agg_prefix) :-
+    BgpRib(node, prefix, _, _, _, _, _, _, _, _, _),
+    BgpAggregation(node, agg_prefix),
+    prefix != agg_prefix,
+    in_subnet(prefix.addr, agg_prefix.addr, agg_prefix.mask).
+
+// Add aggregate route.
+BgpAggregateRib(node, agg_prefix, next_hop_ip, as_path, local_pref, med, origin, community, bgp_type, originate_id, cluster_list) :-
+    AggregateRoute(node, _, agg_prefix),
+    var next_hop_ip = Ip{8'd0, 8'd0, 8'd0, 8'd0},
+    var as_path = intern(vec_empty(): Vec<u64>),
+    var local_pref = 64'd100,
+    var med = 64'd0,
+    // aggregate route is considered to hava origin code as IGP
+    var origin = 64'd2,
+    var community = intern(vec_empty(): Vec<community_t>),
+    var bgp_type = i"other",
+    var originate_id = 64'd0,
+    var cluster_list = intern(vec_empty(): Vec<u64>).
+
+// Supress all component route.
+BgpAggregateRib(node, prefix, next_hop_ip, as_path, local_pref, med, origin, community, bgp_type_n, originate_id, cluster_list) :-
+    BgpRib(node, prefix, next_hop_ip, as_path, local_pref, med, origin, community, bgp_type, originate_id, cluster_list),
+    AggregateRoute(node, prefix, _),
+    var bgp_type_n = i"supressed".
+
+// Other normal route
+BgpAggregateRib(node, prefix, next_hop_ip, as_path, local_pref, med, origin, community, bgp_type, originate_id, cluster_list) :-
+    BgpRib(node, prefix, next_hop_ip, as_path, local_pref, med, origin, community, bgp_type, originate_id, cluster_list),
+    BgpAggregation(node, agg_prefix),
+    not in_subnet(prefix.addr, agg_prefix.addr, agg_prefix.mask).
+
+// If there is no aggregation option
+BgpAggregateRib(node, prefix, next_hop_ip, as_path, local_pref, med, origin, community, bgp_type, originate_id, cluster_list) :-
+    BgpRib(node, prefix, next_hop_ip, as_path, local_pref, med, origin, community, bgp_type, originate_id, cluster_list),
+    not BgpAggregation(node, _).
+
+/**
+ * Route-map outbound.
+ * Choose BgpRib to advertise after applying policy. Note that as_path is reversed.
+ */
+
+// If you learned the route from eBGP or other, advertise to all peers (iBGP and eBGP).
+NeedMatchRibOut(node, to_node, prefix, next_hop_ip, as_path_n,local_pref, med, origin, community, bgp_type_n, originate_id, cluster_list) :-
+    BgpAggregateRib(node, prefix, _, as_path, _, _, origin, community, bgp_type, _, _),
+    bgp_type != i"ibgp",
+    bgp_type != i"supressed",
+    L3Neighbor(node, int, _, to_node, to_int, to_ip),
+    BgpNeighbor(node, next_hop_ip, to_node, to_ip),
+    Node(node, as_, _),
+    var as_path_n = intern(vec_push_imm(ival(as_path), as_)),
+    var med = 64'd0,
+    var local_pref = 64'd100,
+    var bgp_type_n = i"ebgp",
+    var originate_id = 64'd0,
+    var cluster_list = intern(vec_empty(): Vec<u64>).
+
+// (ABR)To iBGP(non_client), reserve med and local-pref.
+NeedMatchRibOut(node, to_node, prefix, next_hop_ip, as_path, local_pref, med, origin, community, bgp_type_n, originate_id, cluster_list) :-
+    BgpAggregateRib(node, prefix, _, as_path, local_pref, med, origin, community, bgp_type, originate_id, cluster_list),
+    bgp_type != i"ibgp",
+    bgp_type != i"supressed",
+    IBgpNeighbor(node, next_hop_ip, to_node, to_int_ip),
+    not BgpReflectClient(to_node, to_int_ip, _, _),
+    InterfaceIp(to_node, to_int, to_int_ip),
+    GlobalRib(node, pfx, _, _, protocol, _),
+    protocol != i"ibgp" and protocol != i"ebgp",
+    pfx == Prefix{to_int_ip, Ip{255, 255, 255, 255}},
+    var bgp_type_n = i"ibgp".
+
+// To iBGP(RR), add originate_id if originate_id is null and maintain the first 5 bgp attributes
+NeedMatchRibOut(node, to_node, prefix, next_hop_ip, as_path, local_pref, med, origin, community, bgp_type_n, originate_id_n, cluster_list) :-
+    BgpAggregateRib(node, prefix, _, as_path, local_pref, med, origin, community, bgp_type, originate_id, cluster_list),
+    bgp_type != i"ibgp",
+    bgp_type != i"supressed",
+    IBgpNeighbor(node, next_hop_ip, to_node, to_int_ip),
+    GlobalRib(node, pfx, _, _, protocol, _),
+    protocol != i"ibgp" and protocol != i"ebgp",
+    pfx == Prefix{to_int_ip, Ip{255, 255, 255, 255}},
+    var bgp_type_n = i"ibgp",
+    BgpReflectClient(to_node, to_int_ip, _, _),
+    Node(node, _, id),
+    var originate_id_n = update_origin(originate_id, id).
+
+function update_origin(originate_id: u64, from_node_id: u64): u64 = {
+    if(originate_id == 64'd0){
+        from_node_id
+    }else{
+        originate_id
+    }
+}
+
+// If you learned the route from iBGP, advertise to eBGP peers and RR.
+// when adverting to eBGP peer, clear internal AS bgp attribute
+NeedMatchRibOut(node, to_node, prefix, next_hop_ip, as_path_n, local_pref, med, origin, community, bgp_type_n, originate_id, cluster_list) :-
+    BgpAggregateRib(node, prefix, _, as_path, _, _, origin, community, bgp_type, _, _),
+    bgp_type == i"ibgp",
+    L3Neighbor(node, int, _, to_node, to_int, to_ip),
+    BgpNeighbor(node, next_hop_ip, to_node, to_ip),
+    Node(node, as_, _),
+    var as_path_n = intern(vec_push_imm(ival(as_path), as_)),
+    var med = 64'd0,
+    var local_pref = 64'd100,
+    var bgp_type_n = i"ebgp",
+    var originate_id = 64'd0,
+    var cluster_list = intern(vec_empty(): Vec<u64>).
+
+// RR reflect route to client and add the local cluster_id to the cluster_list
+NeedMatchRibOut(node, to_node, prefix, next_hop_ip, as_path, local_pref, med, origin, community, bgp_type, originate_id, cluster_list_n) :-
+    BgpAggregateRib(node, prefix, next_hop_ip, as_path, local_pref, med, origin, community, bgp_type, originate_id, cluster_list),
+    bgp_type == i"ibgp",
+    BgpReflectClient(node, _, to_node, to_int_ip),   // node: RR, to_node: client
+    GlobalRib(node, pfx, _, _, protocol, _),
+    protocol != i"ibgp" and protocol != i"ebgp",
+    pfx == Prefix{to_int_ip, Ip{255, 255, 255, 255}},
+    Node(node, _, node_id),     // local cluster_id defaults to the router_id of RR
+    var cluster_list_n = intern(vec_push_imm(ival(cluster_list), node_id)).
+
+AdjRibOut(node, to_node, prefix, next_hop_ip, as_path, local_pref, med_n, origin, community_n, bgp_type, originate_id, cluster_list) :-
+    NeedMatchRibOut(node, to_node, prefix, next_hop_ip, as_path, local_pref, med, origin, community, bgp_type, originate_id, cluster_list),
+    RouteMapOut(node, to_node, policy),
+    var res = match_and_set(policy, prefix, next_hop_ip, as_path, 0, med, community),
+    (var is_matched, var is_permitted, _, var med_n, var community_n, _) = res,
+    is_matched,
+    is_permitted.
+
+// if there is not a route-map-out
+AdjRibOut(node, to_node, prefix, next_hop_ip, as_path, local_pref, med, origin, community, bgp_type, originate_id, cluster_list) :-
+    NeedMatchRibOut(node, to_node, prefix, next_hop_ip, as_path, local_pref, med, origin, community, bgp_type, originate_id, cluster_list),
+    not RouteMapOut(node, to_node, _).
+
+// Init Bgp by "network" command
+BgpRib(node, prefix, next_hop_ip, as_path, local_pref, med, origin, community, bgp_type, originate_id, cluster_list) :-
+    BgpPrefixSpreadEnable(prefix),
+    Node(node, as_, _),
+    BgpNetwork(node, prefix),
+    GlobalRib(node, prefix, _, _, protocol, _),
+    protocol != i"ibgp" and protocol != i"ebgp",
+    var next_hop_ip = Ip{8'd0, 8'd0, 8'd0, 8'd0},
+    var as_path = intern(vec_empty(): Vec<u64>),
+    var local_pref = 64'd100,
+    var med = 64'd0,
+    var origin = 64'd1,
+    var community = intern(vec_empty(): Vec<community_t>),
+    var bgp_type = i"other",
+    var originate_id = 64'd0,
+    var cluster_list = intern(vec_empty(): Vec<u64>).
+
+function new_vec(as_: u64): Vec<u64> = {
+    vec_singleton(as_)
+}
+
+function match_and_set(policy: Intern<Vec<route_map_t>>, prefix: prefix_t, next_hop_ip: ip_t,
+                       as_path: Intern<Vec<u64>>, local_pref: u64, med: u64, communities: Intern<Vec<community_t>>)
+                       : (bool, bool, u64, u64, Intern<Vec<community_t>>, ip_t) = {
+    var is_matched = false;
+    var is_permitted = false;
+    var local_pref_n = local_pref;
+    var med_n = med;
+    var community_n = ival(communities);
+    var next_hop_ip_n = next_hop_ip;
+
+    for (p in ival(policy)) {
+        if (not is_matched) {
+            var is_local_matched = true;
+            for (c in p.match_condition) {
+                match (c) {
+                    MatchNextHopIp {nhip} -> {
+                        is_local_matched = is_local_matched and (next_hop_ip == nhip)
+                    },
+                    MatchPrefixList {pfx_list} -> {
+                        var in_pfx_list = false;
+                        for (pfx in pfx_list) {
+                            in_pfx_list = in_pfx_list or in_prefix_list(pfx, prefix)
+                        };
+                        is_local_matched = is_local_matched and in_pfx_list
+                    },
+                    MatchAsPath {as_} -> {
+                        if (not vec_contains(ival(as_path), as_)) {
+                            is_local_matched = false
+                        }
+                    },
+                    MatchCommunity {community} -> {
+                        if (not check_community(community, communities)) {
+                            is_local_matched = false
+                        }
+                    }
+                }
+            };
+            if (is_local_matched) {
+                is_matched = true;
+                is_permitted = p.permit;
+                for (a in p.set_action) {
+                    match (a) {
+                        SetLocalPref{lp} -> local_pref_n = lp,
+                        SetMed{m} -> med_n = m,
+                        SetCommunity{additive, community} -> {
+                            if (additive) {
+                                vec_push(community_n, community)
+                            } else {
+                                community_n = vec_singleton(community)
+                            }
+                        },
+                        SetNextHopIp{nhip} -> next_hop_ip_n = nhip
+                    }
+                }
+            }
+        }
+    };
+    (is_matched, is_permitted, local_pref_n, med_n, intern(community_n), next_hop_ip_n)
+}
+
+function check_community(community: community_t, communities: Intern<Vec<community_t>>): bool = {
+    var is_matched = false;
+    for (cmt in ival(communities)){
+            var as_matched = regex_match(regex(ival(community.as_)), ival(cmt.as_));
+            if (as_matched){
+                if(regex_match(regex(ival(community.tag)), ival(cmt.tag))){
+                    is_matched = true;
+                    break
+                }
+            }
+        };
+    is_matched
+}
+
+function in_subnet(ip1: ip_t, ip2: ip_t, mask: ip_t): bool = {
+    var ip1_32: bit<32> = ip1.b3 ++ ip1.b2 ++ ip1.b1 ++ ip1.b0;
+    var ip2_32: bit<32> = ip2.b3 ++ ip2.b2 ++ ip2.b1 ++ ip2.b0;
+    var mask_32: bit<32> = mask.b3 ++ mask.b2 ++ mask.b1 ++ mask.b0;
+    (ip1_32 & mask_32) == (ip2_32 & mask_32)
+}
+
+function in_subnets(pfx: prefix_t, ge: u32, le: u32, prefix: prefix_t): bool = {
+    var ip1 = pfx.addr;
+    var ip2 = prefix.addr;
+    var mask = pfx.mask;
+    var ip1_32: bit<32> = ip1.b3 ++ ip1.b2 ++ ip1.b1 ++ ip1.b0;
+    var ip2_32: bit<32> = ip2.b3 ++ ip2.b2 ++ ip2.b1 ++ ip2.b0;
+    var mask_32: bit<32> = mask.b3 ++ mask.b2 ++ mask.b1 ++ mask.b0;
+    var prefix_match: bool = (ip1_32 & mask_32) == (ip2_32 & mask_32);
+    var length_match: bool = (count_bit(prefix.mask) >= ge and count_bit(prefix.mask) <= le);
+    prefix_match and length_match
+}
+
+function in_prefix_list(pfx: prefix_list_t, prefix: prefix_t): bool = {
+    var res: bool = match(pfx) {
+        CommonPrefix{p} -> p == prefix,
+        ExtendPrefix{p, ge, le} -> in_subnets(p, ge, le, prefix)
+    };
+    res
+}
+
+function count_bit(mask: ip_t): bit<32> = {
+    var x = mask.b3 ++ mask.b2 ++ mask.b1 ++ mask.b0;
+    x = (x & 32'h55555555) + ((x >> 1) & 32'h55555555);
+    x = (x & 32'h33333333) + ((x >> 2) & 32'h33333333);
+    x = (x & 32'h0F0F0F0F) + ((x >> 4) & 32'h0F0F0F0F);
+    x = (x & 32'h00FF00FF) + ((x >> 8) & 32'h00FF00FF);
+    x = (x & 32'h0000FFFF) + ((x >> 16)& 32'h0000FFFF);
+    x
+}
+
+function ip_2string(ip: ip_t): string = {
+    "${ip.b3}.${ip.b2}.${ip.b1}.${ip.b0}"
+}
+
+

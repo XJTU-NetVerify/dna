@@ -1,0 +1,52 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <name>DNA</name>
+  <groupId>org.ants</groupId>
+  <artifactId>dna-project</artifactId>
+  <version>0.1.0</version>
+
+  <packaging>pom</packaging>
+
+  <properties>
+    <maven.compiler.source>1.8</maven.compiler.source>
+    <maven.compiler.target>1.8</maven.compiler.target>
+  </properties>
+
+  <dependencyManagement>
+  <dependencies>
+    <dependency>
+      <groupId>org.ants</groupId>
+      <artifactId>config-parser</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+
+    <dependency>
+      <groupId>org.ants</groupId>
+      <artifactId>dp-generator</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+
+    <dependency>
+      <groupId>org.ants</groupId>
+      <artifactId>dp-verifier</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+
+    <dependency>
+      <groupId>org.ants</groupId>
+      <artifactId>realconfig</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+  </dependencies>
+  </dependencyManagement>
+
+  <modules>
+    <module>config-parser</module>
+    <module>dp-generator</module>
+    <module>dp-verifier</module>
+    <module>dna</module>
+  </modules>
+</project>
